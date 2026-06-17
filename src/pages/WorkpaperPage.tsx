@@ -29,13 +29,17 @@ import {
   Signature,
   MessageSquare,
   Building2,
+  Inbox,
 } from 'lucide-react'
 import DensityHeatmap, { type DensityHeatmapItem } from '@/components/chart/DensityHeatmap'
 import AnomalyPieChart, { type AnomalyPieItem } from '@/components/chart/AnomalyPieChart'
 import TrendLineChart, { type TrendLineItem } from '@/components/chart/TrendLineChart'
 import DataCard from '@/components/common/DataCard'
 import { cn } from '@/lib/utils'
-import type { ReviewConclusion, AnomalyType, AnomalyLevel } from '@/types'
+import type { ReviewConclusion, AnomalyType, AnomalyLevel, AssertionType } from '@/types'
+import { useFindingStore } from '@/store/findingStore'
+import { useInvoiceStore } from '@/store/invoiceStore'
+import { useProjectStore } from '@/store/projectStore'
 
 type TabType = 'review' | 'dashboard' | 'export'
 
@@ -65,205 +69,31 @@ interface ExportTask {
   downloadUrl?: string
 }
 
-const REVIEW_TREE_DATA: ReviewNode[] = [
-  {
-    id: 'cat-1',
-    category: '一、发票基础信息复核',
-    content: '核对发票代码、号码、开票日期、购买方信息等基础要素',
-    conclusion: 'pending',
-    children: [
-      {
-        id: 'item-1-1',
-        category: '',
-        content: '1.1 发票代码与号码连续性检查',
-        conclusion: 'pass',
-        reviewer: '张伟',
-        reviewTime: '2025-06-10 14:32:18',
-        remark: '发票连号区间正常，无跳号、重号情况',
-      },
-      {
-        id: 'item-1-2',
-        category: '',
-        content: '1.2 开票日期与会计期间匹配验证',
-        conclusion: 'pass',
-        reviewer: '张伟',
-        reviewTime: '2025-06-10 15:08:45',
-        remark: '',
-      },
-      {
-        id: 'item-1-3',
-        category: '',
-        content: '1.3 购买方名称与税号一致性校验',
-        conclusion: 'fail',
-        reviewer: '张伟',
-        reviewTime: '2025-06-10 16:22:10',
-        remark: '发现3张发票购买方税号有误，已标注并要求重新开具',
-      },
-      {
-        id: 'item-1-4',
-        category: '',
-        content: '1.4 发票专用章合规性检查',
-        conclusion: 'pending',
-        remark: '',
-      },
-    ],
-  },
-  {
-    id: 'cat-2',
-    category: '二、金额与税额复核',
-    content: '核对金额计算、税额抵扣、价税分离准确性',
-    conclusion: 'pending',
-    children: [
-      {
-        id: 'item-2-1',
-        category: '',
-        content: '2.1 价税分离计算准确性验证',
-        conclusion: 'pass',
-        reviewer: '李娜',
-        reviewTime: '2025-06-11 09:15:30',
-        remark: '',
-      },
-      {
-        id: 'item-2-2',
-        category: '',
-        content: '2.2 税率适用合规性检查',
-        conclusion: 'pass',
-        reviewer: '李娜',
-        reviewTime: '2025-06-11 10:42:20',
-        remark: '各档税率使用正确，未见错用税率情况',
-      },
-      {
-        id: 'item-2-3',
-        category: '',
-        content: '2.3 合计金额与明细加总一致性',
-        conclusion: 'pending',
-        remark: '',
-      },
-      {
-        id: 'item-2-4',
-        category: '',
-        content: '2.4 税额抵扣范围合规性复核',
-        conclusion: 'pending',
-        remark: '',
-      },
-    ],
-  },
-  {
-    id: 'cat-3',
-    category: '三、交易真实性与关联方核查',
-    content: '核实交易背景真实性、供应商资质、关联交易披露',
-    conclusion: 'pending',
-    children: [
-      {
-        id: 'item-3-1',
-        category: '',
-        content: '3.1 供应商工商信息与存续状态核查',
-        conclusion: 'pass',
-        reviewer: '王磊',
-        reviewTime: '2025-06-12 11:30:00',
-        remark: '全部供应商均为存续状态，未见异常注销',
-      },
-      {
-        id: 'item-3-2',
-        category: '',
-        content: '3.2 关联方交易识别与完整性检查',
-        conclusion: 'fail',
-        reviewer: '王磊',
-        reviewTime: '2025-06-12 14:18:55',
-        remark: '发现2笔关联交易未在附注中充分披露，需补充披露',
-      },
-      {
-        id: 'item-3-3',
-        category: '',
-        content: '3.3 大额交易合同与发票匹配验证',
-        conclusion: 'pending',
-        remark: '',
-      },
-      {
-        id: 'item-3-4',
-        category: '',
-        content: '3.4 异常供应商集中度风险评估',
-        conclusion: 'pending',
-        remark: '',
-      },
-    ],
-  },
-  {
-    id: 'cat-4',
-    category: '四、费用归集与分摊复核',
-    content: '检查费用科目归属、期间分摊、预算执行情况',
-    conclusion: 'pending',
-    children: [
-      {
-        id: 'item-4-1',
-        category: '',
-        content: '4.1 费用科目分类准确性检查',
-        conclusion: 'pending',
-        remark: '',
-      },
-      {
-        id: 'item-4-2',
-        category: '',
-        content: '4.2 跨期费用截止测试',
-        conclusion: 'pending',
-        remark: '',
-      },
-      {
-        id: 'item-4-3',
-        category: '',
-        content: '4.3 预算执行率与偏差分析',
-        conclusion: 'pending',
-        remark: '',
-      },
-    ],
-  },
-]
-
-const CATEGORIES = ['办公用品', '差旅交通', '会议服务', '技术服务', '咨询服务', '餐饮招待', '设备采购']
-const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
-
-function generateHeatmapData(): DensityHeatmapItem[] {
-  const data: DensityHeatmapItem[] = []
-  const seed = 42
-  let s = seed
-  const rnd = () => {
-    s = (s * 16807) % 2147483647
-    return s / 2147483647
-  }
-  for (const cat of CATEGORIES) {
-    for (const month of MONTHS) {
-      data.push({
-        category: cat,
-        month,
-        count: Math.floor(rnd() * 28),
-      })
-    }
-  }
-  return data
+const ASSERTION_LABELS: Record<AssertionType, string> = {
+  existence: '存在性认定复核',
+  completeness: '完整性认定复核',
+  accuracy: '准确性认定复核',
+  cutoff: '截止认定复核',
+  classification: '分类认定复核',
 }
 
-const PIE_DATA: AnomalyPieItem[] = [
-  { name: '连号发票', value: 24, type: 'consecutive_no' as AnomalyType },
-  { name: '周末异常', value: 18, type: 'weekend' as AnomalyType },
-  { name: '重复报销', value: 12, type: 'duplicate' as AnomalyType },
-  { name: '整数金额', value: 35, type: 'round_amount' as AnomalyType },
-  { name: '金额不符', value: 15, type: 'amount_mismatch' as AnomalyType },
-]
+const ASSERTION_DESCRIPTIONS: Record<AssertionType, string> = {
+  existence: '核实交易与资产的存在性，确认发票对应的经济业务真实发生',
+  completeness: '验证记录的完整性，确认应入账交易均已入账',
+  accuracy: '核对金额计算的准确性，验证金额、税额等数据无误',
+  cutoff: '检查交易截止的合理性，确认跨期交易处理正确',
+  classification: '审查科目分类的合规性，确认费用归集与分摊准确',
+}
 
-const TREND_DATA: TrendLineItem[] = [
-  { month: '1月', high: 8, medium: 15, low: 22, total: 45 },
-  { month: '2月', high: 6, medium: 12, low: 18, total: 36 },
-  { month: '3月', high: 12, medium: 20, low: 28, total: 60 },
-  { month: '4月', high: 10, medium: 18, low: 25, total: 53 },
-  { month: '5月', high: 15, medium: 22, low: 30, total: 67 },
-  { month: '6月', high: 9, medium: 16, low: 20, total: 45 },
-  { month: '7月', high: 7, medium: 14, low: 19, total: 40 },
-  { month: '8月', high: 11, medium: 19, low: 24, total: 54 },
-  { month: '9月', high: 13, medium: 21, low: 26, total: 60 },
-  { month: '10月', high: 8, medium: 17, low: 23, total: 48 },
-  { month: '11月', high: 10, medium: 18, low: 27, total: 55 },
-  { month: '12月', high: 14, medium: 24, low: 32, total: 70 },
-]
+const ANOMALY_TYPE_LABELS: Record<AnomalyType, string> = {
+  consecutive_no: '连号发票',
+  weekend: '周末异常',
+  duplicate: '重复报销',
+  round_amount: '整数金额',
+  amount_mismatch: '金额不符',
+}
+
+const MONTH_LABELS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 
 const CONCLUSION_STYLES: Record<ReviewConclusion, { icon: typeof CheckCircle2; text: string; bg: string; textColor: string; border: string }> = {
   pass: {
@@ -316,14 +146,45 @@ function flattenReviewTree(nodes: ReviewNode[]): ReviewNode[] {
   return result
 }
 
+function getMonthFromDate(dateStr: string): number {
+  try {
+    const d = new Date(dateStr)
+    return d.getMonth()
+  } catch {
+    return 0
+  }
+}
+
 export default function WorkpaperPage() {
+  const { findings, annotations, setFindingSuggestion, updateFinding } = useFindingStore()
+  const { invoices, anomalies } = useInvoiceStore()
+  const { currentProject } = useProjectStore()
+
+  const projectInvoices = useMemo(
+    () => (currentProject ? invoices.filter((inv) => inv.projectId === currentProject.id) : invoices),
+    [currentProject, invoices]
+  )
+
+  const projectFindings = useMemo(
+    () =>
+      currentProject
+        ? findings.filter((f) => projectInvoices.some((inv) => inv.id === f.invoiceId))
+        : findings,
+    [currentProject, findings, projectInvoices]
+  )
+
+  const projectAnomalies = useMemo(
+    () =>
+      currentProject
+        ? anomalies.filter((a) => projectInvoices.some((inv) => inv.id === a.invoiceId))
+        : anomalies,
+    [currentProject, anomalies, projectInvoices]
+  )
+
   const [activeTab, setActiveTab] = useState<TabType>('review')
-  const [reviewTree, setReviewTree] = useState<ReviewNode[]>(REVIEW_TREE_DATA)
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['cat-1', 'cat-2', 'cat-3', 'cat-4']))
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [searchText, setSearchText] = useState('')
   const [filterConclusion, setFilterConclusion] = useState<ReviewConclusion | 'all'>('all')
-  const [selectedClient, setSelectedClient] = useState('国际审计咨询有限公司')
-  const [selectedPeriod, setSelectedPeriod] = useState('2024年度')
   const [showSignatureModal, setShowSignatureModal] = useState(false)
   const [signingItemId, setSigningItemId] = useState<string | null>(null)
   const [signatureInput, setSignatureInput] = useState('')
@@ -381,7 +242,137 @@ export default function WorkpaperPage() {
     },
   ])
 
-  const heatmapData = useMemo(() => generateHeatmapData(), [])
+  const reviewTree = useMemo<ReviewNode[]>(() => {
+    if (projectFindings.length === 0) return []
+
+    const grouped = new Map<AssertionType, typeof projectFindings>()
+    for (const finding of projectFindings) {
+      const primaryAssertion = finding.assertions[0] || 'existence'
+      if (!grouped.has(primaryAssertion)) grouped.set(primaryAssertion, [])
+      grouped.get(primaryAssertion)!.push(finding)
+    }
+
+    const assertionOrder: AssertionType[] = ['existence', 'completeness', 'accuracy', 'cutoff', 'classification']
+    const trees: ReviewNode[] = []
+    const newExpandedIds = new Set<string>()
+
+    for (const assertion of assertionOrder) {
+      const group = grouped.get(assertion)
+      if (!group || group.length === 0) continue
+
+      const catId = `cat-${assertion}`
+      newExpandedIds.add(catId)
+
+      const children: ReviewNode[] = group.map((finding, idx) => {
+        const conclusion: ReviewConclusion =
+          finding.suggestion?.status === 'completed'
+            ? 'pass'
+            : finding.suggestion?.status === 'in_progress'
+            ? 'pending'
+            : 'pending'
+
+        return {
+          id: finding.id,
+          category: '',
+          content: `${idx + 1}. ${finding.title}${finding.description ? ' — ' + finding.description : ''}`,
+          conclusion,
+          reviewer: finding.suggestion?.responsible || finding.createBy,
+          reviewTime: finding.suggestion?.status === 'completed' ? finding.createTime : undefined,
+          remark: finding.suggestion?.content || '',
+        }
+      })
+
+      trees.push({
+        id: catId,
+        category: ASSERTION_LABELS[assertion],
+        content: ASSERTION_DESCRIPTIONS[assertion],
+        conclusion: getConclusionFromChildren(children),
+        children,
+      })
+    }
+
+    setExpandedIds((prev) => {
+      if (prev.size === 0) return newExpandedIds
+      return prev
+    })
+
+    return trees
+  }, [projectFindings])
+
+  const invoiceMap = useMemo(
+    () => new Map(projectInvoices.map((inv) => [inv.id, inv])),
+    [projectInvoices]
+  )
+
+  const heatmapData = useMemo<DensityHeatmapItem[]>(() => {
+    if (projectAnomalies.length === 0) return []
+
+    const categories = Array.from(new Set(projectAnomalies.map((a) => a.type)))
+      .map((t) => ANOMALY_TYPE_LABELS[t])
+      .filter(Boolean)
+
+    const countMap = new Map<string, number>()
+    for (const anomaly of projectAnomalies) {
+      const invoice = invoiceMap.get(anomaly.invoiceId)
+      if (!invoice) continue
+      const monthIdx = getMonthFromDate(invoice.uploadTime)
+      const month = MONTH_LABELS[monthIdx]
+      const cat = ANOMALY_TYPE_LABELS[anomaly.type]
+      const key = `${cat}|${month}`
+      countMap.set(key, (countMap.get(key) || 0) + 1)
+    }
+
+    const data: DensityHeatmapItem[] = []
+    for (const cat of categories) {
+      for (const month of MONTH_LABELS) {
+        const key = `${cat}|${month}`
+        data.push({ category: cat, month, count: countMap.get(key) || 0 })
+      }
+    }
+    return data
+  }, [projectAnomalies, invoiceMap])
+
+  const pieData = useMemo<AnomalyPieItem[]>(() => {
+    const countMap = new Map<AnomalyType, number>()
+    for (const a of projectAnomalies) {
+      countMap.set(a.type, (countMap.get(a.type) || 0) + 1)
+    }
+    return Array.from(countMap.entries()).map(([type, value]) => ({
+      name: ANOMALY_TYPE_LABELS[type],
+      value,
+      type,
+    }))
+  }, [projectAnomalies])
+
+  const trendData = useMemo<TrendLineItem[]>(() => {
+    const monthData = new Map<number, { high: number; medium: number; low: number }>()
+    for (const anomaly of projectAnomalies) {
+      const invoice = invoiceMap.get(anomaly.invoiceId)
+      if (!invoice) continue
+      const monthIdx = getMonthFromDate(invoice.uploadTime)
+      if (!monthData.has(monthIdx)) monthData.set(monthIdx, { high: 0, medium: 0, low: 0 })
+      const d = monthData.get(monthIdx)!
+      d[anomaly.level]++
+    }
+
+    const data: TrendLineItem[] = []
+    for (let i = 0; i < 12; i++) {
+      const d = monthData.get(i) || { high: 0, medium: 0, low: 0 }
+      data.push({
+        month: MONTH_LABELS[i],
+        high: d.high,
+        medium: d.medium,
+        low: d.low,
+        total: d.high + d.medium + d.low,
+      })
+    }
+    return data
+  }, [projectAnomalies, invoiceMap])
+
+  const heatmapCategories = useMemo(
+    () => Array.from(new Set(projectAnomalies.map((a) => ANOMALY_TYPE_LABELS[a.type]))).filter(Boolean),
+    [projectAnomalies]
+  )
 
   const reviewStats = useMemo(() => {
     const flat = flattenReviewTree(reviewTree).filter((n) => n.category === '')
@@ -394,41 +385,60 @@ export default function WorkpaperPage() {
   }, [reviewTree])
 
   const dashboardKPIs = useMemo(() => {
-    const totalAnomalies = PIE_DATA.reduce((s, i) => s + i.value, 0)
-    const totalReviewed = reviewStats.pass + reviewStats.fail
-    const reviewRate = reviewStats.total > 0 ? ((totalReviewed / reviewStats.total) * 100).toFixed(1) : '0'
-    const highRiskCount = TREND_DATA.reduce((s, m) => s + m.high, 0)
+    const totalAnomalies = projectAnomalies.length
+    const highRiskCount = projectAnomalies.filter((a) => a.level === 'high').length
+    const totalReviewed = projectFindings.filter((f) => f.suggestion?.status === 'completed').length
+    const reviewRate = projectFindings.length > 0 ? ((totalReviewed / projectFindings.length) * 100).toFixed(1) : '0'
+    const reviewers = new Set(projectFindings.filter((f) => f.suggestion?.responsible).map((f) => f.suggestion!.responsible))
+
     return [
       {
         icon: Target,
         label: '异常项总数',
         value: totalAnomalies,
-        trend: { direction: 'up' as const, value: '+12.5%', label: '较上期' },
+        trend: { direction: 'neutral' as const, value: '—', label: '本期' },
         color: 'navy' as const,
       },
       {
         icon: AlertTriangle,
         label: '高风险异常',
         value: highRiskCount,
-        trend: { direction: 'down' as const, value: '-8.3%', label: '较上期' },
+        trend: { direction: 'neutral' as const, value: '—', label: '本期' },
         color: 'red' as const,
       },
       {
         icon: CheckSquare,
         label: '复核完成率',
         value: `${reviewRate}%`,
-        trend: { direction: 'up' as const, value: '+5.2%', label: '较上周' },
+        trend: { direction: 'neutral' as const, value: '—', label: '本期' },
         color: 'green' as const,
       },
       {
         icon: Users,
         label: '复核人员',
-        value: 4,
+        value: reviewers.size || 0,
         trend: { direction: 'neutral' as const, value: '—', label: '稳定' },
         color: 'blue' as const,
       },
     ]
-  }, [reviewStats])
+  }, [projectAnomalies, projectFindings])
+
+  const bottomBarStats = useMemo(() => {
+    const passCount = projectFindings.filter((f) => f.suggestion?.status === 'completed').length
+    const highRiskInvoiceIds = new Set(
+      projectAnomalies.filter((a) => a.level === 'high').map((a) => a.invoiceId)
+    )
+    const failCount = projectFindings.filter(
+      (f) => f.suggestion && highRiskInvoiceIds.has(f.invoiceId)
+    ).length
+    const pendingCount = projectFindings.length - passCount - failCount
+    return { pass: passCount, fail: failCount, pending: pendingCount, total: projectFindings.length }
+  }, [projectFindings, projectAnomalies])
+
+  const clientName = currentProject?.clientName || '未选择项目'
+  const periodLabel = currentProject
+    ? `${currentProject.periodStart?.slice(0, 10) || ''} ~ ${currentProject.periodEnd?.slice(0, 10) || ''}`
+    : '未选择期间'
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -457,46 +467,53 @@ export default function WorkpaperPage() {
     setExpandedIds(new Set())
   }, [])
 
-  const updateConclusion = useCallback((nodeId: string, conclusion: ReviewConclusion) => {
-    setReviewTree((prev) => {
-      const update = (nodes: ReviewNode[]): ReviewNode[] => {
-        return nodes.map((n) => {
-          if (n.id === nodeId) {
-            const now = new Date()
-            const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-            return {
-              ...n,
-              conclusion,
-              reviewTime: conclusion !== 'pending' ? timeStr : n.reviewTime,
-            }
-          }
-          if (n.children) {
-            const newChildren = update(n.children)
-            return {
-              ...n,
-              children: newChildren,
-              conclusion: getConclusionFromChildren(newChildren),
-            }
-          }
-          return n
-        })
-      }
-      return update(prev)
-    })
-  }, [])
+  const updateConclusion = useCallback(
+    (nodeId: string, conclusion: ReviewConclusion) => {
+      const finding = projectFindings.find((f) => f.id === nodeId)
+      if (!finding) return
 
-  const updateRemark = useCallback((nodeId: string, remark: string) => {
-    setReviewTree((prev) => {
-      const update = (nodes: ReviewNode[]): ReviewNode[] => {
-        return nodes.map((n) => {
-          if (n.id === nodeId) return { ...n, remark }
-          if (n.children) return { ...n, children: update(n.children) }
-          return n
+      if (conclusion === 'pass') {
+        setFindingSuggestion(finding.id, {
+          type: finding.suggestion?.type || 'confirmation',
+          content: finding.suggestion?.content || '',
+          responsible: finding.suggestion?.responsible || finding.createBy,
+          deadline: finding.suggestion?.deadline,
+          status: 'completed',
         })
+      } else if (conclusion === 'fail') {
+        setFindingSuggestion(finding.id, {
+          type: finding.suggestion?.type || 'adjustment',
+          content: finding.suggestion?.content || '',
+          responsible: finding.suggestion?.responsible || finding.createBy,
+          deadline: finding.suggestion?.deadline,
+          status: 'in_progress',
+        })
+      } else {
+        if (finding.suggestion) {
+          updateFinding(finding.id, {
+            suggestion: { ...finding.suggestion, status: 'pending' },
+          })
+        }
       }
-      return update(prev)
-    })
-  }, [])
+    },
+    [projectFindings, setFindingSuggestion, updateFinding]
+  )
+
+  const updateRemark = useCallback(
+    (nodeId: string, remark: string) => {
+      const finding = projectFindings.find((f) => f.id === nodeId)
+      if (!finding) return
+
+      setFindingSuggestion(finding.id, {
+        type: finding.suggestion?.type || 'note',
+        content: remark,
+        responsible: finding.suggestion?.responsible || finding.createBy,
+        deadline: finding.suggestion?.deadline,
+        status: finding.suggestion?.status || 'pending',
+      })
+    },
+    [projectFindings, setFindingSuggestion]
+  )
 
   const openSignModal = useCallback((nodeId: string) => {
     setSigningItemId(nodeId)
@@ -506,27 +523,19 @@ export default function WorkpaperPage() {
 
   const confirmSign = useCallback(() => {
     if (!signingItemId || !signatureInput.trim()) return
-    setReviewTree((prev) => {
-      const update = (nodes: ReviewNode[]): ReviewNode[] => {
-        return nodes.map((n) => {
-          if (n.id === signingItemId) {
-            const now = new Date()
-            const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-            return {
-              ...n,
-              reviewer: signatureInput.trim(),
-              reviewTime: timeStr,
-            }
-          }
-          if (n.children) return { ...n, children: update(n.children) }
-          return n
-        })
-      }
-      return update(prev)
-    })
+    const finding = projectFindings.find((f) => f.id === signingItemId)
+    if (finding) {
+      setFindingSuggestion(finding.id, {
+        type: finding.suggestion?.type || 'confirmation',
+        content: finding.suggestion?.content || '',
+        responsible: signatureInput.trim(),
+        deadline: finding.suggestion?.deadline,
+        status: finding.suggestion?.status || 'pending',
+      })
+    }
     setShowSignatureModal(false)
     setSigningItemId(null)
-  }, [signingItemId, signatureInput])
+  }, [signingItemId, signatureInput, projectFindings, setFindingSuggestion])
 
   const startExport = useCallback((taskId: string) => {
     setExportTasks((prev) =>
@@ -597,6 +606,25 @@ export default function WorkpaperPage() {
     }
     return filter(reviewTree)
   }, [reviewTree, searchText, filterConclusion])
+
+  const renderEmptyState = (message: string, subMessage?: string) => (
+    <div className="flex flex-col items-center justify-center py-20 px-4">
+      <div
+        className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4"
+        style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+      >
+        <Inbox className="w-8 h-8" style={{ color: 'var(--color-text-tertiary)' }} />
+      </div>
+      <h3 className="text-base font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)' }}>
+        {message}
+      </h3>
+      {subMessage && (
+        <p className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+          {subMessage}
+        </p>
+      )}
+    </div>
+  )
 
   const renderTabs = () => {
     const tabs: { key: TabType; label: string; icon: typeof FileText }[] = [
@@ -908,7 +936,11 @@ export default function WorkpaperPage() {
         </div>
       </div>
 
-      <div className="space-y-0.5">{filteredReviewTree.flatMap((n) => renderReviewNode(n))}</div>
+      {projectFindings.length === 0 ? (
+        renderEmptyState('暂无复核项', '请先在发票详情中创建疑点，系统将自动生成复核清单')
+      ) : (
+        <div className="space-y-0.5">{filteredReviewTree.flatMap((n) => renderReviewNode(n))}</div>
+      )}
     </div>
   )
 
@@ -918,38 +950,15 @@ export default function WorkpaperPage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Building2 className="w-4 h-4" style={{ color: 'var(--color-text-tertiary)' }} />
-            <select
-              value={selectedClient}
-              onChange={(e) => setSelectedClient(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border appearance-none pr-8 cursor-pointer focus:outline-none focus:ring-2"
-              style={{
-                borderColor: 'var(--color-border-secondary)',
-                backgroundColor: 'var(--color-bg-card)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              <option>国际审计咨询有限公司</option>
-              <option>华信科技集团股份有限公司</option>
-              <option>鼎盛贸易发展有限公司</option>
-            </select>
+            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+              {clientName}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4" style={{ color: 'var(--color-text-tertiary)' }} />
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border appearance-none pr-8 cursor-pointer focus:outline-none focus:ring-2"
-              style={{
-                borderColor: 'var(--color-border-secondary)',
-                backgroundColor: 'var(--color-bg-card)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              <option>2024年度</option>
-              <option>2024年H1</option>
-              <option>2024年H2</option>
-              <option>2023年度</option>
-            </select>
+            <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              {periodLabel}
+            </span>
           </div>
         </div>
         <div
@@ -959,79 +968,97 @@ export default function WorkpaperPage() {
             color: 'var(--color-text-inverse)',
           }}
         >
-          数据更新于 2025-06-17 09:30
+          数据更新于 {new Date().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {dashboardKPIs.map((kpi, idx) => (
-          <DataCard
-            key={idx}
-            icon={kpi.icon}
-            label={kpi.label}
-            value={kpi.value}
-            trend={kpi.trend}
-            iconColor={kpi.color}
-            size="md"
-          />
-        ))}
-      </div>
-
-      <div
-        className="rounded-xl border overflow-hidden"
-        style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-secondary)' }}
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-tertiary)' }}>
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4" style={{ color: 'var(--color-text-navy)' }} />
-            <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
-              费用类别 × 月度异常密度热力图
-            </h3>
+      {projectAnomalies.length === 0 && projectFindings.length === 0 ? (
+        renderEmptyState('暂无统计数据', '请先上传发票并进行异常检测，统计数据将自动生成')
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {dashboardKPIs.map((kpi, idx) => (
+              <DataCard
+                key={idx}
+                icon={kpi.icon}
+                label={kpi.label}
+                value={kpi.value}
+                trend={kpi.trend}
+                iconColor={kpi.color}
+                size="md"
+              />
+            ))}
           </div>
-          <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-            单位：项
-          </span>
-        </div>
-        <div className="p-4">
-          <DensityHeatmap data={heatmapData} height={380} categories={CATEGORIES} months={MONTHS} />
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        <div
-          className="lg:col-span-2 rounded-xl border overflow-hidden"
-          style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-secondary)' }}
-        >
-          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-tertiary)' }}>
-            <div className="flex items-center gap-2">
-              <PieChartIcon className="w-4 h-4" style={{ color: 'var(--color-text-navy)' }} />
-              <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
-                异常类型分布
-              </h3>
+          {projectAnomalies.length > 0 && (
+            <div
+              className="rounded-xl border overflow-hidden"
+              style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-secondary)' }}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-tertiary)' }}>
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4" style={{ color: 'var(--color-text-navy)' }} />
+                  <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                    异常类型 × 月度异常密度热力图
+                  </h3>
+                </div>
+                <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+                  单位：项
+                </span>
+              </div>
+              <div className="p-4">
+                <DensityHeatmap data={heatmapData} height={380} categories={heatmapCategories} months={MONTH_LABELS} />
+              </div>
             </div>
-          </div>
-          <div className="p-2">
-            <AnomalyPieChart data={PIE_DATA} height={340} />
-          </div>
-        </div>
+          )}
 
-        <div
-          className="lg:col-span-3 rounded-xl border overflow-hidden"
-          style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-secondary)' }}
-        >
-          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-tertiary)' }}>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" style={{ color: 'var(--color-text-navy)' }} />
-              <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
-                风险级别月度趋势
-              </h3>
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+            {projectAnomalies.length > 0 && (
+              <div
+                className="lg:col-span-2 rounded-xl border overflow-hidden"
+                style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-secondary)' }}
+              >
+                <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-tertiary)' }}>
+                  <div className="flex items-center gap-2">
+                    <PieChartIcon className="w-4 h-4" style={{ color: 'var(--color-text-navy)' }} />
+                    <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                      异常类型分布
+                    </h3>
+                  </div>
+                </div>
+                <div className="p-2">
+                  <AnomalyPieChart data={pieData} height={340} />
+                </div>
+              </div>
+            )}
+
+            {projectAnomalies.length > 0 && (
+              <div
+                className="lg:col-span-3 rounded-xl border overflow-hidden"
+                style={{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border-secondary)' }}
+              >
+                <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-tertiary)' }}>
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" style={{ color: 'var(--color-text-navy)' }} />
+                    <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                      风险级别月度趋势
+                    </h3>
+                  </div>
+                </div>
+                <div className="p-2">
+                  <TrendLineChart data={trendData} height={340} />
+                </div>
+              </div>
+            )}
+
+            {projectAnomalies.length === 0 && projectFindings.length > 0 && (
+              <div className="lg:col-span-5">
+                {renderEmptyState('暂无异常数据', '发票异常检测结果将在此展示')}
+              </div>
+            )}
           </div>
-          <div className="p-2">
-            <TrendLineChart data={TREND_DATA} height={340} />
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   )
 
@@ -1086,6 +1113,13 @@ export default function WorkpaperPage() {
           }
           const sc = statusColors[task.status]
 
+          const displayName =
+            task.type === 'finding_csv'
+              ? `疑点摘要 (CSV) · ${projectFindings.length}条`
+              : task.type === 'finding_json'
+              ? `疑点摘要 (JSON) · ${projectFindings.length}条`
+              : task.name
+
           return (
             <div
               key={task.id}
@@ -1116,7 +1150,7 @@ export default function WorkpaperPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
-                          {task.name}
+                          {displayName}
                         </h4>
                         <span
                           className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full"
@@ -1225,24 +1259,24 @@ export default function WorkpaperPage() {
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-audit-green/10 text-audit-green border border-audit-green/30"
             >
               <CheckCircle2 className="w-3 h-3" />
-              通过 {reviewStats.pass}
+              通过 {bottomBarStats.pass}
             </div>
             <div
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-audit-red/10 text-audit-red border border-audit-red/30"
             >
               <XCircle className="w-3 h-3" />
-              不通过 {reviewStats.fail}
+              不通过 {bottomBarStats.fail}
             </div>
             <div
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30"
             >
               <Clock className="w-3 h-3" />
-              待复核 {reviewStats.pending}
+              待复核 {bottomBarStats.pending}
             </div>
           </div>
           <div style={{ color: 'var(--color-text-tertiary)' }} className="hidden sm:block">
             <Building2 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />
-            {selectedClient} · {selectedPeriod}
+            {clientName} · {periodLabel}
           </div>
         </div>
 
@@ -1416,10 +1450,10 @@ export default function WorkpaperPage() {
                 <Building2 className="w-4 h-4" style={{ color: 'var(--color-text-navy)' }} />
                 <div className="text-xs">
                   <div className="font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                    {selectedClient}
+                    {clientName}
                   </div>
                   <div style={{ color: 'var(--color-text-tertiary)' }}>
-                    审计期间：{selectedPeriod}
+                    审计期间：{periodLabel}
                   </div>
                 </div>
               </div>

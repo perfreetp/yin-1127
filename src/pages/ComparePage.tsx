@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   AlertCircle,
@@ -72,6 +73,7 @@ const FIELD_LABEL_MAP: Record<string, string> = {
 };
 
 export default function ComparePage() {
+  const navigate = useNavigate();
   const {
     invoices,
     selectedInvoiceId,
@@ -403,8 +405,11 @@ export default function ComparePage() {
   }, [selectedInvoice, setInvoiceStatus]);
 
   const handleJumpToAnnotation = useCallback(() => {
-    console.log('Jump to annotation page for:', selectedInvoice?.id);
-  }, [selectedInvoice]);
+    if (selectedInvoice) {
+      setSelectedInvoice(selectedInvoice.id);
+      navigate('/mark');
+    }
+  }, [selectedInvoice, setSelectedInvoice, navigate]);
 
   const severityIcon = (severity: AnomalySeverity) => {
     switch (severity) {
@@ -1112,6 +1117,14 @@ export default function ComparePage() {
             >
               <Flag className="w-4 h-4" />
               {selectedInvoice?.status === 'doubt' ? '取消存疑' : '标记存疑'}
+            </button>
+            <button
+              onClick={handleJumpToAnnotation}
+              disabled={!selectedInvoice}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium bg-audit-amber text-white hover:bg-audit-amber/90 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              标注疑点
             </button>
             <button
               onClick={handleJumpToAnnotation}

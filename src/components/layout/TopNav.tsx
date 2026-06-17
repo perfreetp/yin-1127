@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/store/projectStore';
 import {
@@ -30,6 +31,14 @@ const steps: StepItem[] = [
   { key: 'draft', label: '审计底稿', icon: FileText },
 ];
 
+const STEP_ROUTE_MAP: Record<StepKey, string> = {
+  import: '/import',
+  basket: '/sample',
+  compare: '/compare',
+  annotate: '/mark',
+  draft: '/workpaper',
+};
+
 interface TopNavProps {
   currentStep?: StepKey;
   onStepChange?: (step: StepKey) => void;
@@ -41,6 +50,7 @@ export default function TopNav({
   onStepChange,
   completedSteps = [],
 }: TopNavProps) {
+  const navigate = useNavigate();
   const { currentProject } = useProjectStore();
   const [hoveredStep, setHoveredStep] = useState<StepKey | null>(null);
 
@@ -78,14 +88,17 @@ export default function TopNav({
           const isCompleted = completedSteps.includes(step.key);
           const isPast = index < currentIndex || isCompleted;
           const isHovered = hoveredStep === step.key;
-          const isClickable = onStepChange !== undefined;
+          const isClickable = true;
 
           return (
             <div key={step.key} className="flex items-center">
               <button
                 type="button"
                 disabled={!isClickable}
-                onClick={() => onStepChange?.(step.key)}
+                onClick={() => {
+                  navigate(STEP_ROUTE_MAP[step.key]);
+                  onStepChange?.(step.key);
+                }}
                 onMouseEnter={() => setHoveredStep(step.key)}
                 onMouseLeave={() => setHoveredStep(null)}
                 className={cn(

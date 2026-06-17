@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { Project } from '../types';
+import { useInvoiceStore } from './invoiceStore';
+import { useProjectStore } from './projectStore';
 
 export interface UploadedFile {
   id: string;
@@ -71,6 +73,7 @@ interface ImportState {
   resetAll: () => void;
 
   saveProject: () => Project | null;
+  syncToInvoiceStore: () => void;
 }
 
 const defaultProjectForm = {
@@ -260,6 +263,8 @@ export const useImportStore = create<ImportState>()((set, get) => ({
       ledgerData: mockLedger,
       isLedgerImported: true,
     });
+
+    get().syncToInvoiceStore();
   },
 
   resetAll: () =>
@@ -294,5 +299,30 @@ export const useImportStore = create<ImportState>()((set, get) => ({
     };
 
     return project;
+  },
+
+  syncToInvoiceStore: () => {
+    const { projectForm, uploadedFiles, ledgerData } = get();
+    if (!projectForm.clientName || !projectForm.projectCode) return;
+
+    const projectStore = useProjectStore.getState();
+    let projectId = projectStore.currentProject?.id;
+
+    if (!projectId) {
+      const project: Project = {
+        id: generateId(),
+        clientName: projectForm.clientName,
+        projectCode: projectForm.projectCode,
+        periodStart: projectForm.periodStart,
+        periodEnd: projectForm.periodEnd,
+        auditor: projectForm.auditor,
+        createTime: new Date().toISOString(),
+      };
+      projectStore.addProject(project);
+      projectId = project.id;
+    }
+
+    const invoiceStore = useInvoiceStore.getState();
+    invoiceStore.syncFromImport(projectId, uploadedFiles, ledgerData);
   },
 }));

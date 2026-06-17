@@ -8,6 +8,7 @@ import type {
   CompareDiff,
   Anomaly,
 } from '../types';
+import type { UploadedFile, LedgerRow } from './importStore';
 
 interface InvoiceState {
   invoices: Invoice[];
@@ -44,6 +45,12 @@ interface InvoiceState {
   getInvoicesByProject: (projectId: string) => Invoice[];
   getVouchersByProject: (projectId: string) => AccountVoucher[];
   getAnomaliesByInvoice: (invoiceId: string) => Anomaly[];
+
+  syncFromImport: (
+    projectId: string,
+    uploadedFiles: UploadedFile[],
+    ledgerData: LedgerRow[]
+  ) => void;
 }
 
 export const useInvoiceStore = create<InvoiceState>()(
@@ -194,6 +201,40 @@ export const useInvoiceStore = create<InvoiceState>()(
 
       getAnomaliesByInvoice: (invoiceId) => {
         return get().anomalies.filter((a) => a.invoiceId === invoiceId);
+      },
+
+      syncFromImport: (projectId, uploadedFiles, ledgerData) => {
+        const generateId = () => `id_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+        const newVouchers: AccountVoucher[] = ledgerData.map((ledger) => ({
+          id: generateId(),
+          projectId,
+          voucherNo: ledger.voucherNo,
+          voucherDate: ledger.voucherDate,
+          summary: ledger.summary,
+          amount: ledger.amount,
+          accountCode: ledger.accountCode,
+          accountName: ledger.accountName,
+        }));
+
+        const newInvoices: Invoice[] = uploadedFiles.map((file) => {
+          const matchedVoucher = newVouchers.find((v) => v.voucherNo === file.voucherNo);
+          return {
+            id: generateId(),
+            projectId,
+            voucherNo: file.voucherNo,
+            imageUrl: file.thumbnail || '',
+            fileName: file.name,
+            uploadTime: file.uploadTime,
+            status: 'pending' as InvoiceStatus,
+            accountVoucherId: matchedVoucher?.id,
+          };
+        });
+
+        set((state) => ({
+          invoices: [...state.invoices, ...newInvoices],
+          accountVouchers: [...state.accountVouchers, ...newVouchers],
+        }));
       },
     }),
     {

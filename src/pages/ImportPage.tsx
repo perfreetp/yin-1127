@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import TopNav from '@/components/layout/TopNav';
 import SidePanel from '@/components/layout/SidePanel';
@@ -929,8 +930,9 @@ function LedgerImportSection() {
 }
 
 export default function ImportPage() {
-  const { applyMockData, resetAll, projectForm, uploadedFiles, ledgerData, sortableVouchers } =
+  const { applyMockData, resetAll, projectForm, uploadedFiles, ledgerData, sortableVouchers, syncToInvoiceStore } =
     useImportStore();
+  const navigate = useNavigate();
   const [showToast, setShowToast] = useState(false);
 
   const completionSteps = [
@@ -944,7 +946,10 @@ export default function ImportPage() {
   const handleMockData = () => {
     applyMockData();
     setShowToast(true);
-    setTimeout(() => setShowToast(false), 2500);
+    setTimeout(() => {
+      setShowToast(false);
+      navigate('/sample');
+    }, 1200);
   };
 
   return (
@@ -1003,6 +1008,10 @@ export default function ImportPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => {
+                      syncToInvoiceStore();
+                      navigate('/sample');
+                    }}
                     className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-audit-navy to-audit-navy-light text-white shadow-audit hover:shadow-audit-raised transition-all duration-200"
                   >
                     <Plus className="w-4 h-4" />

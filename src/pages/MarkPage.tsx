@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ImageViewer,
   AnnotationCanvas,
@@ -41,6 +42,7 @@ import {
   LocateFixed,
   Copy,
   Sparkles,
+  ArrowLeft,
 } from 'lucide-react';
 
 const ASSERTION_TAGS: {
@@ -349,6 +351,7 @@ function AssertionTagChip({
 }
 
 export default function MarkPage() {
+  const navigate = useNavigate();
   const {
     findings,
     selectedFindingId,
@@ -645,6 +648,26 @@ export default function MarkPage() {
 
   return (
     <div className="h-full flex flex-col bg-audit-paper dark:bg-[#1a1d23] overflow-hidden">
+      {invoices.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="w-20 h-20 rounded-2xl bg-audit-paper-dark dark:bg-[#2a2f3a] flex items-center justify-center border border-audit-border dark:border-[#3d4148]">
+            <AlertCircle className="w-10 h-10 text-audit-ink-light/40 dark:text-[#5c5a57]" />
+          </div>
+          <h2 className="text-lg font-bold text-audit-ink dark:text-[#e8e6e3]">暂无票据数据</h2>
+          <p className="text-sm text-audit-ink-light dark:text-[#8a8782] max-w-sm text-center">
+            请先前往抽样篮选择需要标注的票据
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/sample')}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-audit-navy to-audit-navy-light text-white shadow-audit hover:shadow-audit-raised transition-all duration-200"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            前往抽样篮
+          </button>
+        </div>
+      ) : (
+      <>
       <header className="shrink-0 border-b border-audit-border dark:border-[#3d4148] bg-white dark:bg-[#22262f] px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div>
@@ -1483,6 +1506,8 @@ export default function MarkPage() {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
