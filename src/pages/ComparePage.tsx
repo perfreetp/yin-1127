@@ -39,11 +39,12 @@ import {
 import {
   AnomalyDetector,
   quickDetect,
-  type Anomaly,
+  type Anomaly as DetectorAnomaly,
   type AnomalySeverity,
   type InvoiceRecord,
   type LedgerRecord,
 } from '../utils/anomalyDetector';
+import type { Anomaly as StoreAnomaly, AnomalyType as StoreAnomalyType } from '../types';
 import { generateMockDataset } from '../utils/mockData';
 
 const IMPORTANT_FIELDS = [
@@ -72,6 +73,34 @@ const FIELD_LABEL_MAP: Record<string, string> = {
   '税额合计': '税额',
 };
 
+const ANOMALY_TYPE_MAP: Record<string, StoreAnomalyType> = {
+  consecutive_numbers: 'consecutive_no',
+  weekend_invoice: 'weekend',
+  duplicate_entry: 'duplicate',
+  amount_mismatch: 'amount_mismatch',
+  high_round_amount: 'round_amount',
+};
+
+const SEVERITY_TO_LEVEL: Record<AnomalySeverity, StoreAnomaly['level']> = {
+  critical: 'high',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+};
+
+const convertToStoreAnomaly = (detectorAnomaly: DetectorAnomaly): StoreAnomaly | null => {
+  const storeType = ANOMALY_TYPE_MAP[detectorAnomaly.type];
+  if (!storeType) return null;
+  return {
+    id: detectorAnomaly.id,
+    invoiceId: detectorAnomaly.affectedRecords[0] || '',
+    type: storeType,
+    level: SEVERITY_TO_LEVEL[detectorAnomaly.severity],
+    description: detectorAnomaly.description,
+    relatedInvoices: detectorAnomaly.affectedRecords,
+  };
+};
+
 export default function ComparePage() {
   const navigate = useNavigate();
   const {
@@ -84,6 +113,8 @@ export default function ComparePage() {
     setInvoiceStatus,
     setOcrResult,
     updateInvoice,
+    addAnomalies,
+    setCompareDiffs,
   } = useInvoiceStore();
 
   const [leftWidth, setLeftWidth] = useState(50);
@@ -93,7 +124,7 @@ export default function ComparePage() {
   const [isScanning, setIsScanning] = useState(false);
   const [ocrResults, setOcrResults] = useState<Record<string, OCRResultEngine>>({});
   const [fieldConfidence, setFieldConfidence] = useState<Record<string, OCRField[]>>({});
-  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [anomalies, setAnomalies] = useState<DetectorAnomaly[]>([]);
   const [compareDiffsMap, setCompareDiffsMap] = useState<Record<string, CompareDiff[]>>({});
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
@@ -168,6 +199,10 @@ export default function ComparePage() {
         holidayDates: [],
       });
       setAnomalies(detectAnomalies);
+      const storeAnomalies = detectAnomalies
+        .map(convertToStoreAnomaly)
+        .filter((a): a is StoreAnomaly => a !== null);
+      addAnomalies(storeAnomalies);
 
       if (linkedInvoices.length > 0) {
         setSelectedInvoice(linkedInvoices[0].id);
@@ -182,10 +217,11 @@ export default function ComparePage() {
         const diffs = computeDiffs(linkedInvoices[idx], ocrResult, vouchers[idx]);
         if (diffs.length > 0) {
           setCompareDiffsMap((prev) => ({ ...prev, [linkedInvoices[idx].id]: diffs }));
+          setCompareDiffs(linkedInvoices[idx].id, diffs);
         }
       });
     }
-  }, [invoices.length, addInvoices, addAccountVouchers, setSelectedInvoice]);
+  }, [invoices.length, addInvoices, addAccountVouchers, setSelectedInvoice, addAnomalies, setCompareDiffs]);
 
   const computeDiffs = useCallback(
     (
@@ -278,7 +314,7 @@ export default function ComparePage() {
   }, [selectedIndex, invoices, setSelectedInvoice]);
 
   const handleAnomalyClick = useCallback(
-    (anomaly: Anomaly) => {
+    (anomaly: DetectorAnomaly) => {
       const affectedId = anomaly.affectedRecords[0];
       if (affectedId && invoices.some((inv) => inv.id === affectedId)) {
         setSelectedInvoice(affectedId);
@@ -314,6 +350,7 @@ export default function ComparePage() {
       const diffs = computeDiffs(selectedInvoice, result, voucher);
       if (diffs.length > 0) {
         setCompareDiffsMap((prev) => ({ ...prev, [selectedInvoice.id]: diffs }));
+        setCompareDiffs(selectedInvoice.id, diffs);
       }
 
       const overallConf = result.overallConfidence;
@@ -340,7 +377,7 @@ export default function ComparePage() {
       setIsScanning(false);
       setScanProgress(null);
     }
-  }, [selectedInvoice, isScanning, accountVouchers, computeDiffs, setOcrResult]);
+  }, [selectedInvoice, isScanning, accountVouchers, computeDiffs, setOcrResult, setCompareDiffs]);
 
   const handleBatchRecognize = useCallback(async () => {
     if (isBatchProcessing) return;
@@ -365,6 +402,7 @@ export default function ComparePage() {
             const diffs = computeDiffs(inv, result, voucher);
             if (diffs.length > 0) {
               setCompareDiffsMap((prev) => ({ ...prev, [inv.id]: diffs }));
+              setCompareDiffs(inv.id, diffs);
             }
 
             const overallConf = result.overallConfidence;
@@ -394,7 +432,7 @@ export default function ComparePage() {
     }
 
     setIsBatchProcessing(false);
-  }, [invoices, isBatchProcessing, accountVouchers, computeDiffs, setSelectedInvoice, setOcrResult]);
+  }, [invoices, isBatchProcessing, accountVouchers, computeDiffs, setSelectedInvoice, setOcrResult, setCompareDiffs]);
 
   const handleMarkDoubt = useCallback(() => {
     if (!selectedInvoice) return;
@@ -406,10 +444,14 @@ export default function ComparePage() {
 
   const handleJumpToAnnotation = useCallback(() => {
     if (selectedInvoice) {
+      const storeAnomalies = anomalies
+        .map(convertToStoreAnomaly)
+        .filter((a): a is StoreAnomaly => a !== null);
+      addAnomalies(storeAnomalies);
       setSelectedInvoice(selectedInvoice.id);
       navigate('/mark');
     }
-  }, [selectedInvoice, setSelectedInvoice, navigate]);
+  }, [selectedInvoice, setSelectedInvoice, navigate, anomalies, addAnomalies]);
 
   const severityIcon = (severity: AnomalySeverity) => {
     switch (severity) {

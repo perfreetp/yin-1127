@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
 import { AlertTriangle, AlertCircle, FileText, Calendar, Hash, DollarSign, ChevronRight, CheckCircle2, Loader2, HelpCircle, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Invoice, InvoiceStatus, Anomaly, AnomalyLevel } from '@/types';
+import type { Invoice, InvoiceStatus, Anomaly, AnomalyLevel, AccountVoucher } from '@/types';
 
 export interface InvoiceCardProps {
   invoice: Invoice;
+  voucher?: AccountVoucher;
   anomalies?: Anomaly[];
   selected?: boolean;
   onClick?: () => void;
@@ -82,6 +83,7 @@ function formatCurrency(amount: number | undefined): string {
 
 export default function InvoiceCard({
   invoice,
+  voucher,
   anomalies = [],
   selected = false,
   onClick,
@@ -105,8 +107,58 @@ export default function InvoiceCard({
 
   const anomalyConfig = highestAnomaly ? ANOMALY_LEVEL_CONFIG[highestAnomaly.level] : null;
 
-  const amount = invoice.ocrResult?.amount;
+  const ocrAmount = invoice.ocrResult?.amount;
+  const voucherAmount = voucher?.amount;
   const invoiceDate = invoice.ocrResult?.invoiceDate;
+
+  const amountDisplay = useMemo(() => {
+    const hasOcr = ocrAmount !== undefined;
+    const hasVoucher = voucherAmount !== undefined;
+
+    if (!hasOcr && !hasVoucher) {
+      return {
+        showVoucher: true,
+        voucherAmount: undefined,
+        showOcr: false,
+        ocrColor: '',
+      };
+    }
+
+    if (hasVoucher && !hasOcr) {
+      return {
+        showVoucher: true,
+        voucherAmount,
+        showOcr: false,
+        ocrColor: '',
+      };
+    }
+
+    if (hasOcr && hasVoucher) {
+      const diff = Math.abs(ocrAmount - voucherAmount);
+      const diffPercent = voucherAmount > 0 ? diff / voucherAmount : 0;
+      const isMismatch = ocrAmount !== voucherAmount;
+      const ocrColor = diffPercent > 0.01
+        ? 'text-audit-red dark:text-[#e8887e]'
+        : isMismatch
+        ? 'text-audit-amber dark:text-[#e8c54d]'
+        : 'text-audit-ink-light dark:text-[#8a8782]';
+
+      return {
+        showVoucher: true,
+        voucherAmount,
+        showOcr: true,
+        ocrAmount,
+        ocrColor,
+      };
+    }
+
+    return {
+      showVoucher: false,
+      showOcr: true,
+      ocrAmount,
+      ocrColor: 'text-audit-ink dark:text-[#e8e6e3]',
+    };
+  }, [ocrAmount, voucherAmount]);
 
   const anomalyTooltip = anomalies.length > 0
     ? anomalies.map((a) => a.description).join('\n')
@@ -216,14 +268,26 @@ export default function InvoiceCard({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             <DollarSign className="w-3.5 h-3.5 text-audit-green dark:text-[#6bbf8a] flex-shrink-0" />
-            <span className={cn(
-              'font-mono font-semibold text-sm truncate',
-              amount !== undefined && amount > 0
-                ? 'text-audit-ink dark:text-[#e8e6e3]'
-                : 'text-audit-ink-light dark:text-[#8a8782]'
-            )}>
-              ¥{formatCurrency(amount)}
-            </span>
+            <div className="min-w-0">
+              {amountDisplay.showVoucher && (
+                <span className={cn(
+                  'font-mono font-bold text-sm truncate block',
+                  amountDisplay.voucherAmount !== undefined && amountDisplay.voucherAmount > 0
+                    ? 'text-audit-ink dark:text-[#e8e6e3]'
+                    : 'text-audit-ink-light dark:text-[#8a8782]'
+                )}>
+                  ¥{formatCurrency(amountDisplay.voucherAmount)}
+                </span>
+              )}
+              {amountDisplay.showOcr && (
+                <span className={cn(
+                  'font-mono text-xs truncate block',
+                  amountDisplay.ocrColor
+                )}>
+                  OCR ¥{formatCurrency(amountDisplay.ocrAmount)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

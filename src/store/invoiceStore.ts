@@ -46,6 +46,8 @@ interface InvoiceState {
   getVouchersByProject: (projectId: string) => AccountVoucher[];
   getAnomaliesByInvoice: (invoiceId: string) => Anomaly[];
 
+  getAmountByInvoice: (invoice: Invoice) => number | undefined | { ocrAmount: number; voucherAmount: number };
+
   syncFromImport: (
     projectId: string,
     uploadedFiles: UploadedFile[],
@@ -176,7 +178,9 @@ export const useInvoiceStore = create<InvoiceState>()(
 
       addAnomalies: (newAnomalies) => {
         const { anomalies } = get();
-        set({ anomalies: [...anomalies, ...newAnomalies] });
+        const existingIds = new Set(anomalies.map((a) => a.id));
+        const uniqueAnomalies = newAnomalies.filter((a) => !existingIds.has(a.id));
+        set({ anomalies: [...anomalies, ...uniqueAnomalies] });
       },
 
       deleteAnomaly: (id) => {
@@ -203,33 +207,61 @@ export const useInvoiceStore = create<InvoiceState>()(
         return get().anomalies.filter((a) => a.invoiceId === invoiceId);
       },
 
+      getAmountByInvoice: (invoice) => {
+        const ocrAmount = invoice.ocrResult?.amount;
+        const { accountVouchers } = get();
+        const voucher = accountVouchers.find((v) => v.id === invoice.accountVoucherId);
+        const voucherAmount = voucher?.amount;
+
+        if (ocrAmount !== undefined && voucherAmount !== undefined) {
+          if (ocrAmount === voucherAmount) {
+            return ocrAmount;
+          }
+          return { ocrAmount, voucherAmount };
+        }
+        if (ocrAmount !== undefined) {
+          return ocrAmount;
+        }
+        return voucherAmount;
+      },
+
       syncFromImport: (projectId, uploadedFiles, ledgerData) => {
         const generateId = () => `id_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const { invoices, accountVouchers } = get();
 
-        const newVouchers: AccountVoucher[] = ledgerData.map((ledger) => ({
-          id: generateId(),
-          projectId,
-          voucherNo: ledger.voucherNo,
-          voucherDate: ledger.voucherDate,
-          summary: ledger.summary,
-          amount: ledger.amount,
-          accountCode: ledger.accountCode,
-          accountName: ledger.accountName,
-        }));
-
-        const newInvoices: Invoice[] = uploadedFiles.map((file) => {
-          const matchedVoucher = newVouchers.find((v) => v.voucherNo === file.voucherNo);
-          return {
+        const newVouchers: AccountVoucher[] = ledgerData
+          .filter((ledger) => 
+            !accountVouchers.some((v) => v.projectId === projectId && v.voucherNo === ledger.voucherNo)
+          )
+          .map((ledger) => ({
             id: generateId(),
             projectId,
-            voucherNo: file.voucherNo,
-            imageUrl: file.thumbnail || '',
-            fileName: file.name,
-            uploadTime: file.uploadTime,
-            status: 'pending' as InvoiceStatus,
-            accountVoucherId: matchedVoucher?.id,
-          };
-        });
+            voucherNo: ledger.voucherNo,
+            voucherDate: ledger.voucherDate,
+            summary: ledger.summary,
+            amount: ledger.amount,
+            accountCode: ledger.accountCode,
+            accountName: ledger.accountName,
+          }));
+
+        const newInvoices: Invoice[] = uploadedFiles
+          .filter((file) => 
+            !invoices.some((i) => i.projectId === projectId && i.voucherNo === file.voucherNo)
+          )
+          .map((file) => {
+            const matchedVoucher = newVouchers.find((v) => v.voucherNo === file.voucherNo) 
+              || accountVouchers.find((v) => v.projectId === projectId && v.voucherNo === file.voucherNo);
+            return {
+              id: generateId(),
+              projectId,
+              voucherNo: file.voucherNo,
+              imageUrl: file.thumbnail || '',
+              fileName: file.name,
+              uploadTime: file.uploadTime,
+              status: 'pending' as InvoiceStatus,
+              accountVoucherId: matchedVoucher?.id,
+            };
+          });
 
         set((state) => ({
           invoices: [...state.invoices, ...newInvoices],

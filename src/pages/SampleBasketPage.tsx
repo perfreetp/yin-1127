@@ -35,7 +35,7 @@ import { useProjectStore } from '@/store/projectStore';
 import TopNav from '@/components/layout/TopNav';
 import SidePanel from '@/components/layout/SidePanel';
 import InvoiceCard from '@/components/invoice/InvoiceCard';
-import type { Invoice, InvoiceStatus, AnomalyType, AnomalyLevel } from '@/types';
+import type { Invoice, InvoiceStatus, AnomalyType, AnomalyLevel, AccountVoucher } from '@/types';
 
 const STATUS_OPTIONS: { value: InvoiceStatus | 'all'; label: string; color: string }[] = [
   { value: 'all', label: '全部状态', color: 'text-audit-ink-light' },
@@ -128,7 +128,7 @@ function formatCurrency(amount: number | undefined): string {
 
 export default function SampleBasketPage() {
   const { currentProject } = useProjectStore();
-  const { invoices, getInvoicesByProject, getAnomaliesByInvoice, updateInvoice, deleteInvoice, setInvoiceStatus } = useInvoiceStore();
+  const { invoices, accountVouchers, getInvoicesByProject, getVouchersByProject, getAnomaliesByInvoice, updateInvoice, deleteInvoice, setInvoiceStatus } = useInvoiceStore();
 
   const [searchVoucherNo, setSearchVoucherNo] = useState('');
   const [dateStart, setDateStart] = useState('');
@@ -147,6 +147,16 @@ export default function SampleBasketPage() {
   const projectInvoices = useMemo(() => {
     return currentProject ? getInvoicesByProject(currentProject.id) : invoices;
   }, [currentProject, invoices, getInvoicesByProject]);
+
+  const projectVouchers = useMemo(() => {
+    return currentProject ? getVouchersByProject(currentProject.id) : accountVouchers;
+  }, [currentProject, accountVouchers, getVouchersByProject]);
+
+  const voucherMap = useMemo(() => {
+    const map = new Map<string, AccountVoucher>();
+    projectVouchers.forEach((v) => map.set(v.id, v));
+    return map;
+  }, [projectVouchers]);
 
   const amountBounds = useMemo(() => {
     const amounts = projectInvoices
@@ -559,6 +569,7 @@ export default function SampleBasketPage() {
                         </div>
                         <InvoiceCard
                           invoice={invoice}
+                          voucher={voucherMap.get(invoice.accountVoucherId)}
                           anomalies={anomalies}
                           selected={isSelected}
                           onClick={() => handleCardClick(invoice)}

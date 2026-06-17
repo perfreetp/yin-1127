@@ -36,10 +36,16 @@ import AnomalyPieChart, { type AnomalyPieItem } from '@/components/chart/Anomaly
 import TrendLineChart, { type TrendLineItem } from '@/components/chart/TrendLineChart'
 import DataCard from '@/components/common/DataCard'
 import { cn } from '@/lib/utils'
-import type { ReviewConclusion, AnomalyType, AnomalyLevel, AssertionType } from '@/types'
+import type { ReviewConclusion, AnomalyType, AssertionType } from '@/types'
 import { useFindingStore } from '@/store/findingStore'
 import { useInvoiceStore } from '@/store/invoiceStore'
 import { useProjectStore } from '@/store/projectStore'
+import {
+  exportFindingsCSV,
+  exportFindingsJSON,
+  printReviewChecklist,
+  exportAnnotatedImage,
+} from '@/utils/exportUtils'
 
 type TabType = 'review' | 'dashboard' | 'export'
 
@@ -157,7 +163,7 @@ function getMonthFromDate(dateStr: string): number {
 
 export default function WorkpaperPage() {
   const { findings, annotations, setFindingSuggestion, updateFinding } = useFindingStore()
-  const { invoices, anomalies } = useInvoiceStore()
+  const { invoices, anomalies, selectedInvoiceId } = useInvoiceStore()
   const { currentProject } = useProjectStore()
 
   const projectInvoices = useMemo(
@@ -439,6 +445,78 @@ export default function WorkpaperPage() {
   const periodLabel = currentProject
     ? `${currentProject.periodStart?.slice(0, 10) || ''} ~ ${currentProject.periodEnd?.slice(0, 10) || ''}`
     : '未选择期间'
+  const period = currentProject
+    ? `${currentProject.periodStart || ''}_${currentProject.periodEnd || ''}`
+    : '未选择期间'
+
+  const annotatedInvoices = useMemo(() => {
+    const annotationInvoiceIds = new Set(annotations.map((a) => a.invoiceId))
+    return projectInvoices.filter((inv) => annotationInvoiceIds.has(inv.id))
+  }, [annotations, projectInvoices])
+
+  const handleExportByType = useCallback(
+    async (type: ExportType) => {
+      switch (type) {
+        case 'finding_csv':
+          exportFindingsCSV(projectFindings, annotations, clientName, period)
+          break
+        case 'finding_json':
+          exportFindingsJSON(projectFindings, annotations, clientName, period)
+          break
+        case 'review_pdf':
+          printReviewChecklist(currentProject, projectFindings, projectInvoices)
+          break
+        case 'annotated_image': {
+          if (selectedInvoiceId) {
+            const invoice = projectInvoices.find((inv) => inv.id === selectedInvoiceId)
+            if (invoice) {
+              const invoiceAnnotations = annotations.filter((a) => a.invoiceId === invoice.id)
+              await exportAnnotatedImage(
+                invoice.imageUrl,
+                invoiceAnnotations,
+                projectFindings,
+                invoice.voucherNo
+              )
+            }
+          } else {
+            for (const invoice of annotatedInvoices) {
+              const invoiceAnnotations = annotations.filter((a) => a.invoiceId === invoice.id)
+              await exportAnnotatedImage(
+                invoice.imageUrl,
+                invoiceAnnotations,
+                projectFindings,
+                invoice.voucherNo
+              )
+            }
+          }
+          break
+        }
+        case 'full_package':
+          exportFindingsCSV(projectFindings, annotations, clientName, period)
+          exportFindingsJSON(projectFindings, annotations, clientName, period)
+          for (const invoice of annotatedInvoices) {
+            const invoiceAnnotations = annotations.filter((a) => a.invoiceId === invoice.id)
+            await exportAnnotatedImage(
+              invoice.imageUrl,
+              invoiceAnnotations,
+              projectFindings,
+              invoice.voucherNo
+            )
+          }
+          break
+      }
+    },
+    [
+      projectFindings,
+      annotations,
+      clientName,
+      period,
+      currentProject,
+      projectInvoices,
+      selectedInvoiceId,
+      annotatedInvoices,
+    ]
+  )
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -537,39 +615,50 @@ export default function WorkpaperPage() {
     setSigningItemId(null)
   }, [signingItemId, signatureInput, projectFindings, setFindingSuggestion])
 
-  const startExport = useCallback((taskId: string) => {
-    setExportTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: 'running', progress: 0 } : t))
-    )
-    const tick = () => {
+  const startExport = useCallback(
+    async (taskId: string) => {
+      const task = exportTasks.find((t) => t.id === taskId)
+      if (!task) return
+
       setExportTasks((prev) =>
-        prev.map((t) => {
-          if (t.id !== taskId) return t
-          if (t.status !== 'running') return t
-          const increment = t.type === 'full_package' ? 3 : t.type === 'annotated_image' ? 5 : 12
-          const nextProgress = Math.min(t.progress + increment + Math.random() * 8, 95)
-          if (nextProgress >= 95) {
-            return { ...t, progress: 100, status: 'completed' }
-          }
-          return { ...t, progress: nextProgress }
-        })
+        prev.map((t) => (t.id === taskId ? { ...t, status: 'running', progress: 0 } : t))
       )
-    }
-    const interval = setInterval(() => {
-      setExportTasks((prev) => {
-        const task = prev.find((t) => t.id === taskId)
-        if (!task || task.status !== 'running' || task.progress >= 95) {
-          clearInterval(interval)
-          if (task && task.status === 'running') {
-            return prev.map((t) => (t.id === taskId ? { ...t, progress: 100, status: 'completed' } : t))
+
+      await handleExportByType(task.type)
+
+      const tick = () => {
+        setExportTasks((prev) =>
+          prev.map((t) => {
+            if (t.id !== taskId) return t
+            if (t.status !== 'running') return t
+            const increment = t.type === 'full_package' ? 3 : t.type === 'annotated_image' ? 5 : 12
+            const nextProgress = Math.min(t.progress + increment + Math.random() * 8, 95)
+            if (nextProgress >= 95) {
+              return { ...t, progress: 100, status: 'completed' }
+            }
+            return { ...t, progress: nextProgress }
+          })
+        )
+      }
+      const interval = setInterval(() => {
+        setExportTasks((prev) => {
+          const t = prev.find((task) => task.id === taskId)
+          if (!t || t.status !== 'running' || t.progress >= 95) {
+            clearInterval(interval)
+            if (t && t.status === 'running') {
+              return prev.map((task) =>
+                task.id === taskId ? { ...task, progress: 100, status: 'completed' } : task
+              )
+            }
+            return prev
           }
+          tick()
           return prev
-        }
-        tick()
-        return prev
-      })
-    }, 350)
-  }, [])
+        })
+      }, 350)
+    },
+    [exportTasks, handleExportByType]
+  )
 
   const startAllExports = useCallback(() => {
     exportTasks.forEach((t) => {
@@ -1118,6 +1207,8 @@ export default function WorkpaperPage() {
               ? `疑点摘要 (CSV) · ${projectFindings.length}条`
               : task.type === 'finding_json'
               ? `疑点摘要 (JSON) · ${projectFindings.length}条`
+              : task.type === 'annotated_image'
+              ? `带标注影像包 · ${annotatedInvoices.length}张`
               : task.name
 
           return (
@@ -1188,6 +1279,7 @@ export default function WorkpaperPage() {
                       {task.status === 'completed' && (
                         <>
                           <button
+                            onClick={() => handleExportByType(task.type)}
                             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg text-white transition-all hover:opacity-90"
                             style={{ background: 'var(--color-gradient-green)' }}
                           >
@@ -1196,6 +1288,7 @@ export default function WorkpaperPage() {
                           </button>
                           {task.type === 'review_pdf' && (
                             <button
+                              onClick={() => printReviewChecklist(currentProject, projectFindings, projectInvoices)}
                               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg border transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
                               style={{
                                 borderColor: 'var(--color-border-secondary)',
@@ -1282,6 +1375,7 @@ export default function WorkpaperPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => handleExportByType('finding_csv')}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg border transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
             style={{
               borderColor: 'var(--color-border-secondary)',
@@ -1292,6 +1386,7 @@ export default function WorkpaperPage() {
             导出疑点CSV
           </button>
           <button
+            onClick={() => handleExportByType('review_pdf')}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg border transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
             style={{
               borderColor: 'var(--color-border-secondary)',
